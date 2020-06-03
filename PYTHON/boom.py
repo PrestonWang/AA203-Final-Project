@@ -5,9 +5,6 @@ Setting up iLQR to get controls for intial problem.
 @author: Preston Wang
 """
 import numpy as np
-mref = 1 # kg
-aref = .05 # m 
-bref = 0 # 
 dt = 0.05 # seconds
 J = .07 # kg-m**3
 
