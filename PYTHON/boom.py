@@ -8,11 +8,16 @@ import numpy as np
 dt = 0.05 # seconds
 J = .07 # kg-m**3
 
-def linearize_dynamics(x,u,m,a,b):
-    l = x[0]
-    theta = x[1]
-    lp = x[2]
-    thetap = x[3]
+def linearize_dynamics(q,u,m,a,b):
+    # q is vector of joint angles and derivatives: [l, theta, l', theta']
+    # u is vector of joint torques: [Fl, Ftheta]
+    # m is end mass, a and b are location of CM
+    q = q.flatten()
+    u= u.flatten()
+    l = q[0]
+    theta = q[1]
+    lp = q[2]
+    thetap = q[3]
     Fl = u[0]
     Ft = u[1]
     Jp = J + m*a**2 + m*l*(2*a + l)
@@ -29,11 +34,16 @@ def linearize_dynamics(x,u,m,a,b):
         [b/Jp, 1/Jp]])
     return A,B
 
-def dynamics(x,u,m,a,b):
-    l = x[0]
-    theta = x[1]
-    lp = x[2]
-    thetap = x[3]
+def dynamics(q,u,m,a,b):
+    # q is vector of joint angles and derivatives: [l, theta, l', theta']
+    # u is vector of joint torques: [Fl, Ftheta]
+    # m is end mass, a and b are location of CM
+    q = q.flatten()
+    u= u.flatten()
+    l = q[0]
+    theta = q[1]
+    lp = q[2]
+    thetap = q[3]
     Fl = u[0]
     Ft = u[1]
     Jp = J + m*a**2 + m*l*(2*a + l)
@@ -46,4 +56,17 @@ def dynamics(x,u,m,a,b):
     return f
 
     
-  
+def Jq(q, a,b):
+    # q = joint states
+    # theta_k = vector of parameters 
+    q = q.flatten()
+    l = q[0]
+    theta = q[1]
+    
+    return np.array([[np.cos(theta), (a+l)*np.sin(theta) - b*np.cos(theta)],[np.sin(theta), (a+l)*np.cos(theta) - b*np.sin(theta)]])
+
+def forward_kinematics(q,a,b):
+    q = q.flatten()
+    l = q[0]
+    theta = q[1]
+    return np.array([[(l+a)*np.cos(theta) - b*np.sin(theta)],[(l+a)*np.sin(theta) + b*np.cos(theta)]])

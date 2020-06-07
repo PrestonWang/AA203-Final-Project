@@ -12,80 +12,61 @@ import boom
 import matplotlib.pyplot as plt
 
 # time scale
-dt = 0.05 # seconds
-gamma = 10*np.eye(4)
 t0 = 0
 tf = 10
-teval = np.arange(t0+dt,tf,dt)
+dt = 0.05
+teval = np.arange(t0,tf+dt,dt)
 
 # size of state and control
 num_state = 4
 num_control = 2
 
 ## Actual Model Parameters
-m = 5 # kg
-a = .05 # m 
-b = .05 # m
+m = 1 # kg
+a = 0.25 # m 
+b = 0.25 # m
 
-# Initial Guess for Model Parameters
-mref = 1 # kg
-aref = 0 # m
-bref = 0 # m
+# centroid locations:
+ap = 0.1
+bp = 0
 
 # Initial Location
-x0 = np.array([[1], [np.pi/4],[0],[0]])
+q0 = np.array([[1], [np.pi/4],[0],[0]])
+x0 = boom.forward_kinematics(q0,a,b)
 u0 = np.zeros((num_control,1))
-kr0 = np.zeros((num_control,num_control)) # num_control x num_control
-kx0 = np.zeros((num_control,num_state)) # num_control x num_state
-y0 = np.vstack((x0, x0, np.reshape(kr0, (-1,1)), np.reshape(kx0, (-1,1))))
-y0 = y0.flatten()
-
-# indices
-index_xref = [0, num_state]
-index_x = [num_state, num_state*2]
-index_kr = [num_state*2, num_state*2 + num_control*num_control]
-index_kx = [index_kr[1], index_kr[1] + num_control*num_state]
-
-# getting linearized matrices
-Aref, Bref = boom.linearize_dynamics(x0.flatten(), u0.flatten(), mref, aref, bref)
-Fref = boom.dynamics(x0.flatten(), u0.flatten(), mref, aref, bref)
-A, B = boom.linearize_dynamics(x0.flatten(), u0.flatten(), m, a, b)
-F = boom.dynamics(x0.flatten(), u0.flatten(), m, a, b)
-Breft = np.transpose(Bref)
-
-def r(t):
-    return np.array([[5*np.sin(np.pi*t + np.pi/2)],[0]])
-
+def u_probe(t):
+    return np.array([0.01*(np.sin(np.pi*t)), 0.01*(np.cos(np.pi*t))])
 def mrac_ode(t,y):
-    # MRAC odes for use with scipy solve_ivp
-    # t is a scalar
-    # y is shape (4n)
-    xref = np.reshape(y[index_xref[0]:index_xref[1]],(num_state,1))
-    x = np.reshape(y[index_x[0]:index_x[1]],(num_state,1))
-    #kr = np.reshape(y[index_kr[0]: index_kr[1]],(num_control,num_control))
-    kr = np.linalg.pinv(B) @ Bref 
-    #kx = np.reshape(y[index_kx[0]: index_kx[1]],(num_control,num_state))
-    kx = np.linalg.pinv(B) @ (A-Aref)
-    r_t = r(t)
-    e = x-xref
-    dxref = F + dt*Aref @ (xref-x0) + dt * Bref @ (r_t - u0)
-    dx = F + dt*(A - B@kx) @ (x-x0) + dt*B @ (kr@r_t - u0)
-    dkr = -np.sign(Breft)@gamma@e@np.transpose(r_t)
-    dkx = -np.sign(Breft)@gamma@e@np.transpose(x)
-    dy = np.vstack((dxref, dx, np.reshape(dkr,(-1,1)), np.reshape(dkx,(-1,1))))
-    dy = dy.flatten()
+    u = u_probe(t)
+    dy = boom.dynamics(y,u,m,a,b).flatten()
     return dy
 
-sol = sp.integrate.solve_ivp(mrac_ode,(t0,tf),y0, t_eval = teval)
-Y = sol.y
-xref_sol = Y[index_xref[0]:index_xref[1],:]
-x_sol = Y[index_x[0]:index_x[1],:]
-kr_sol = Y[index_kr[0]:index_kr[1],:]
-kx_sol = Y[index_kx[0]:index_kx[1],:]
-e_sol = xref_sol - x_sol
+sol = sp.integrate.solve_ivp(mrac_ode,(t0,tf),q0.flatten(), t_eval = teval)
+qsol = sol.y
+
+# getting mass location
+Xsol = np.zeros((num_state,qsol.shape[1]))
+Usol = np.zeros((num_control, qsol.shape[1]))
+Upsilon = Usol
+for i in range(qsol.shape[1]):
+    q = qsol[:,i]
+    Xsol[0:2,i] = boom.forward_kinematics(q, ap, bp).flatten()
+    Jq = boom.Jq(q,ap,bp)
+    Xsol[2:4,i] = (Jq@ np.array([[q[2]],[q[3]]])).flatten()
+    Usol[:,i] = u_probe(sol.t[i])
+    Upsilon[:,i] = np.dot(Jq, u_probe(sol.t[i]))
+Upsilon = Usol[:,0:-1]
+X = Xsol[:,0:-1]
+Xp = Xsol[:,1:]
+Omega = np.vstack((X,Upsilon))
+U_tilda, Sigma_tilda, V_tilda = np.linalg.svd(Omega)
+U_hat, Sigma_hat, V_hat = np.linalg.svd(Xp)
+S_tilda = sp.linalg.diagsvd(Sigma_tilda, num_state + num_control, qsol.shape[1]-1)
+U1 = U_tilda[:,0:num_state]
+U2 = U_tilda[:,num_state:]
+Sinv = np.linalg.pinv(S_tilda)
+Atilda = U_hat @ Xp @ V_tilda @ Sinv @ U1 @ U_hat
+#%% plotting
 plt.figure(1)
 plt.clf()
-plt.plot(sol.t, xref_sol[0,:], sol.t, x_sol[0,:])
-plt.figure(2)
-plt.clf()
-plt.plot(sol.t, np.transpose(e_sol))
+plt.plot(Xsol[0,:], Xsol[1,:])
