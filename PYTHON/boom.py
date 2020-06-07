@@ -46,4 +46,20 @@ def dynamics(x,u,m,a,b):
     return f
 
     
+<<<<<<< Updated upstream
   
+=======
+def Jq(q, a,b):
+    # q = joint states
+    # theta_k = vector of parameters 
+    q = q.flatten()
+    l = q[0]
+    theta = q[1]
+    return np.array([[np.cos(theta), (a+l)*np.sin(theta) - b*np.cos(theta)],[np.sin(theta), (a+l)*np.cos(theta) - b*np.sin(theta)]])
+
+def forward_kinematics(q,a,b):
+    q = q.flatten()
+    l = q[0]
+    theta = q[1]
+    return np.array([[(l+a)*np.cos(theta) - b*np.sin(theta)],[(l+a)*np.sin(theta) + b*np.cos(theta)]])
+>>>>>>> Stashed changes
