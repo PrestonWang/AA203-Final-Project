@@ -9,6 +9,8 @@ dt = 0.05 # seconds
 J = .07 # kg-m**3
 
 def linearize_dynamics(x,u,m,a,b):
+    x = x.flatten()
+    u = u.flatten()
     l = x[0]
     theta = x[1]
     lp = x[2]
@@ -30,6 +32,8 @@ def linearize_dynamics(x,u,m,a,b):
     return A,B
 
 def dynamics(x,u,m,a,b):
+    x = x.flatten()
+    u = u.flatten()
     l = x[0]
     theta = x[1]
     lp = x[2]
@@ -45,21 +49,16 @@ def dynamics(x,u,m,a,b):
     ])
     return f
 
-    
-<<<<<<< Updated upstream
-  
-=======
-def Jq(q, a,b):
+def Jq(q):
     # q = joint states
     # theta_k = vector of parameters 
     q = q.flatten()
     l = q[0]
     theta = q[1]
-    return np.array([[np.cos(theta), (a+l)*np.sin(theta) - b*np.cos(theta)],[np.sin(theta), (a+l)*np.cos(theta) - b*np.sin(theta)]])
+    return np.array([[np.cos(theta), -l*np.sin(theta)],[np.sin(theta), l*np.cos(theta)]])
 
-def forward_kinematics(q,a,b):
+def forward_kinematics(q):
     q = q.flatten()
     l = q[0]
     theta = q[1]
-    return np.array([[(l+a)*np.cos(theta) - b*np.sin(theta)],[(l+a)*np.sin(theta) + b*np.cos(theta)]])
->>>>>>> Stashed changes
+    return np.array([[l*np.cos(theta)],[(l)*np.sin(theta)]])
