@@ -1,5 +1,5 @@
 import numpy as np
-
+import boom
 import do_mpc
 from casadi import *
 from casadi.tools import *
@@ -7,6 +7,34 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 
 
+# setting up boom model
+
+# actual model values
+m = 2.0 # end mass
+a = 0.05 # location of center of mass x
+b = 0.05 # location of center of mass y
+J = .07 # kg-m**3
+
+# setting up initial and target states
+# q = [l, theta, l', theta']
+q0 = np.array([1.0, np.pi/2,0.0,0.0])# initial state
+qd = np.array([2.0, 0.0, 0.0, 0.0]) # target state
+
+# LQR costs matrices
+Q = np.array([1.0,1.0,1.0,1.0])
+Qn = np.array([1.0,1.0,1.0,1.0]) # terminal cost
+R = np.array([1.0,1.0]) # control cost
+
+# creating boom class and finding initial estiamtes of Boom
+Boom = boom.boom(m,a,b,J)
+params_guess = np.array([1.0, 0.0, 0.0])
+params_est, params_cov = Boom.get_estimate(q0, params_guess)
+
+# Length of Simulation
+T = 60 # 60 iterations
+dt = 0.05 # time step
+
+#%% Setting up MPC
 model_type = 'continuous' # either 'discrete' or 'continuous'
 model = do_mpc.model.Model(model_type)
 # setting up states
@@ -21,10 +49,9 @@ Ft = model.set_variable(var_type = '_u', var_name = 'Ft', shape=(1,1))
 m_e = model.set_variable('parameter','m_e')
 a_e = model.set_variable('parameter','a_e')
 b_e = model.set_variable('parameter','b_e')
-# setting rhs side of equation
+# setting rhs side of equation for the dynamics (nonlinear dynamics)
 model.set_rhs('l', lp)
 model.set_rhs('theta', thetap)
-J = .07 # kg-m**3
 Jp = J + m_e*a_e**2 + m_e*l*(2*a_e + l)
 model.set_rhs('lp', -(b_e*m_e*(Ft - 2*(a_e + l)*lp*m_e*thetap) - (-J - (a_e**2 + b_e**2)*m_e - l*(2*a_e + l)*m_e)*(Fl + (a_e + l)*m_e*thetap**2))/(-m_e*Jp))
 model.set_rhs('thetap', -(((-b_e)*Fl - Ft + 2*a_e*lp*m_e*thetap + 2*l*lp*m_e*thetap - a_e*b_e*m_e*thetap**2 - b_e*l*m_e*thetap**2)/(Jp)))
@@ -38,18 +65,13 @@ model.setup()
 mpc = do_mpc.controller.MPC(model)
 setup_mpc = {
     'n_horizon': 20,
-    't_step': 0.1,
+    't_step': dt,
     'n_robust': 1,
     'store_full_solution': True,
 }
 mpc.set_param(**setup_mpc)
 
 # setting up the objective
-q0 = np.array([1.0, np.pi/2,0.0,0.0]).reshape(-1,1) # initial state
-qd = np.array([2.0, 0.0, 0.0, 0.0]) # target state
-Q = np.array([1.0,1.0,1.0,1.0])
-Qn = np.array([1.0,1.0,1.0,1.0])
-R = np.array([1.0,1.0])
 state_cost = Q[0]*(l-qd[0])**2 + Q[1]*(theta-qd[1])**2 + Q[2]*(lp-qd[2])**2 + Q[3]*(thetap-qd[3])**2
 final_cost = Qn[0]*(l-qd[0])**2 + Qn[1]*(theta-qd[1])**2 + Qn[2]*(lp-qd[2])**2 + Qn[3]*(thetap-qd[3])**2
 mpc.set_objective(mterm = final_cost, lterm = state_cost)
@@ -61,13 +83,15 @@ mpc.bounds['upper','_u', 'Fl'] = 10 # N-m
 mpc.bounds['lower','_u', 'Ft'] = -10 #N-m
 mpc.bounds['upper', '_u', 'Ft'] = 10 # N-m
 
-m_e_value = 2
-a_e_value = 0.05
-b_e_value = 0.05
-
-m_range = [m_e_value, m_e_value - .5, m_e_value + .5]
-a_range = [a_e_value, a_e_value - .01, a_e_value + .01]
-b_range = [b_e_value, b_e_value - .01, b_e_value + .01]
+#TODO: Add in Nonlinear constraints for location of end effector (make sure it can't hit any walls)
+# mpc.set_nl_cons('cons_name', expression, upper_bound, soft_constraint=False)
+m_e_value = params_est[0]
+a_e_value = params_est[1]
+b_e_value = params_est[2]
+std = np.sqrt(np.diag(params_cov))
+m_range = [m_e_value, m_e_value - std[0], m_e_value + std[0]]
+a_range = [a_e_value, a_e_value - std[1], a_e_value + std[1]]
+b_range = [b_e_value, b_e_value - std[2], b_e_value + std[2]]
 mpc.set_uncertainty_values(
     m_e = m_range,
     a_e = a_range,
@@ -86,6 +110,7 @@ def p_fun(t_now):
 
 simulator.set_p_fun(p_fun)
 simulator.setup()
+q0 = q0.reshape(-1,1) # to get it into a column vector
 simulator.set_initial_state(q0, reset_history=True)
 mpc.set_initial_state(q0, reset_history=True)
 
@@ -116,14 +141,16 @@ ax[1].set_ylabel('Motor Torques [Nm]')
 ax[1].set_xlabel('time [s]')
 
 #%% Running Simulation
-for i in range(60):
+for i in range(T):
     u0 = mpc.make_step(q0)
     q0 = simulator.make_step(u0)
 
 #%% Plotting results
-#mpc_graphics.plot_predictions(t_ind=0)
+mpc_graphics.plot_predictions(t_ind=0)
 # Plot results until current time
 sim_graphics.plot_results()
 sim_graphics.reset_axes()
 fig
 plt.show()
+#TODO: Add in animations
+#TODO: Add in plots of trajectory with model dispersion
