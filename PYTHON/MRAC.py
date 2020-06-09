@@ -27,23 +27,30 @@ m = 2.0 # kg
 a = .05 # m 
 b = .05 # m
 
-# Initial Guess for Model Parameters
-mref = 1.0 # kg
-aref = 0.0 # m
-bref = 0.0 # m
-x0 = np.array([mref, aref, bref])
-x0 = np.reshape(x0,(num_params,1))
-P = 1e8*np.eye(num_params)
 # measurement noise
 sigma = 0.01
 Sigma = np.eye(num_params)
 
-# Initial Location
-q0 = np.array([1.0, np.pi/4,0.0,0.0])
-thetad0 = np.array([mref, aref, bref])
-
+# RLS parameters
 max_iter = 1000
 eps = 1e-3
+P = 1e8*np.eye(num_params)
+#Setting initial values
+
+# Initial Guess for Model Parameters
+m_e = 1.0 # kg
+a_e = 0.0 # m
+b_e = 0.0 # m
+x0 = np.array([m_e, a_e, b_e])
+x0 = np.reshape(x0,(num_params,1))
+# Initial Location
+q0 = np.array([1.0, np.pi/4,0.0,0.0])
+# Initial Values
+x = x0
+q= q0
+Xe = x0
+i = 0
+t = 0
 
 def get_measurements(q,qdot):
     l = q[0]
@@ -66,11 +73,7 @@ def rls(accel,force,q,x, P):
     x = x + K@(force - H@x)
     return x,P
 
-x = x0
-q= q0
-Xe = x0
-i = 0
-t = 0
+
 while i < max_iter:
     # calculate control
     u = np.array([np.sin(np.pi*t), np.cos(np.pi*t)])
@@ -89,6 +92,12 @@ while i < max_iter:
     i += 1
     x = xnew
     t += dt
+
+m_e = x[[0,0]]
+a_e = x[[1,0]]
+b_e = x[[2,0]]
+
+
 #%% plotting
 T = np.arange(0,t+dt,dt)
 plt.figure(0)
