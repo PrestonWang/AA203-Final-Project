@@ -21,8 +21,8 @@ q0 = np.array([1.0, np.pi/2,0.0,0.0])# initial state
 qd = np.array([2.0, 0.0, 0.0, 0.0]) # target state
 
 # LQR costs matrices
-Q = np.array([1.0,1.0,1.0,1.0])
-Qn = np.array([1.0,1.0,1.0,1.0]) # terminal cost
+Q = np.array([275.0,275.0,275.0,275.0])
+Qn = np.array([275.0,275.0,275.0,275.0]) # terminal cost
 R = np.array([1.0,1.0]) # control cost
 
 # creating boom class and finding initial estiamtes of Boom
@@ -31,7 +31,7 @@ params_guess = np.array([1.0, 0.0, 0.0])
 params_est, params_cov = Boom.get_estimate(q0, params_guess)
 
 # Length of Simulation
-T = 60 # 60 iterations
+T = 100 # 60 iterations
 dt = 0.05 # time step
 
 #%% Setting up MPC
