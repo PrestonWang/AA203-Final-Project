@@ -10,28 +10,32 @@ import matplotlib as mpl
 # setting up boom model
 
 # actual model values
-m = 2.0 # end mass
-a = 0.05 # location of center of mass x
-b = 0.05 # location of center of mass y
+m = 25.0 # end mass
+a = 0.5 # location of center of mass x
+b = 0.1 # location of center of mass y
 J = .07 # kg-m**3
+radius = 1.5 # radius of object
+# Environment Parameters
+wallwidth = 4.2 # 2.5m width
+free_flyer_width = .32 # free_flyer_width
 
 # setting up initial and target states
 # q = [l, theta, l', theta']
-q0 = np.array([1.0, np.pi/2,0.0,0.0])# initial state
-qd = np.array([2.0, 0.0, 0.0, 0.0]) # target state
+q0 = np.array([5.0, np.pi/2,0.0,0.0])# initial state
+qd = np.array([3.0, np.pi*.01, 0.0, 0.0]) # target state
 
 # LQR costs matrices
-Q = np.array([275.0,275.0,275.0,275.0])
+Q = np.array([275.0,275.0,275.0,275.0]) # state cost
 Qn = np.array([275.0,275.0,275.0,275.0]) # terminal cost
-R = np.array([1.0,1.0]) # control cost
+R = np.array([10.0,10.0]) # control cost
 
 # creating boom class and finding initial estiamtes of Boom
 Boom = boom.boom(m,a,b,J)
-params_guess = np.array([1.0, 0.0, 0.0])
+params_guess = np.array([10, radius/2, 0.0]) # 10kg is the mass of astrobee
 params_est, params_cov = Boom.get_estimate(q0, params_guess)
 
 # Length of Simulation
-T = 100 # 60 iterations
+T = 300 # 100 iterations
 dt = 0.05 # time step
 
 #%% Setting up MPC
@@ -55,14 +59,15 @@ model.set_rhs('theta', thetap)
 Jp = J + m_e*a_e**2 + m_e*l*(2*a_e + l)
 model.set_rhs('lp', -(b_e*m_e*(Ft - 2*(a_e + l)*lp*m_e*thetap) - (-J - (a_e**2 + b_e**2)*m_e - l*(2*a_e + l)*m_e)*(Fl + (a_e + l)*m_e*thetap**2))/(-m_e*Jp))
 model.set_rhs('thetap', -(((-b_e)*Fl - Ft + 2*a_e*lp*m_e*thetap + 2*l*lp*m_e*thetap - a_e*b_e*m_e*thetap**2 - b_e*l*m_e*thetap**2)/(Jp)))
+# setting up useful expressions for constraints
+x_end = model.set_expression('x_end', (l+radius)*cos(theta))
+y_end = model.set_expression('y_end', (l+radius)*sin(theta))
 
-# setting up useful expressions (converting from cylindrical to cartesian coordinates)
-model.set_expression('x_end', l* cos(theta))
-model.set_expression('y_end', l*sin(theta))
-
+# %%
 # setting up the model
 model.setup()
 mpc = do_mpc.controller.MPC(model)
+optimizer = do_mpc.optimizer.Optimizer
 setup_mpc = {
     'n_horizon': 20,
     't_step': dt,
@@ -78,13 +83,17 @@ mpc.set_objective(mterm = final_cost, lterm = state_cost)
 mpc.set_rterm(Fl = R[0], Ft = R[1])
 
 # setting up constraint
-mpc.bounds['lower', '_u', 'Fl'] = -10 # N-m
 mpc.bounds['upper','_u', 'Fl'] = 10 # N-m
-mpc.bounds['lower','_u', 'Ft'] = -10 #N-m
+mpc.bounds['lower', '_u', 'Fl'] = -10 # N-m
 mpc.bounds['upper', '_u', 'Ft'] = 10 # N-m
+mpc.bounds['lower','_u', 'Ft'] = -10 #N-m
 
 #TODO: Add in Nonlinear constraints for location of end effector (make sure it can't hit any walls)
 # mpc.set_nl_cons('cons_name', expression, upper_bound, soft_constraint=False)
+#mpc.set_nl_cons('x_constraint', if_else(y_end >= wallwidth, fabs(x_end), wallwidth/2 - 0.05), wallwidth/2, soft_constraint=False)
+#mpc.set_nl_cons('y_constraint', if_else(x_end >= wallwidth, fabs(y_end), wallwidth - free_flyer_width - 0.05), wallwidth-free_flyer_width, soft_constraint=False)
+#mpc.set_nl_cons('y_constraint_2', -y_end, free_flyer_width, soft_constraint=False)
+# setting up uncertain parameters
 m_e_value = params_est[0]
 a_e_value = params_est[1]
 b_e_value = params_est[2]
@@ -103,9 +112,9 @@ simulator = do_mpc.simulator.Simulator(model)
 simulator.set_param(t_step = 0.1)
 p_template = simulator.get_p_template()
 def p_fun(t_now):
-    p_template['m_e'] = m_e_value
-    p_template['a_e'] = a_e_value
-    p_template['b_e'] = b_e_value
+    p_template['m_e'] = m
+    p_template['a_e'] = a
+    p_template['b_e'] = b
     return p_template
 
 simulator.set_p_fun(p_fun)
@@ -125,7 +134,6 @@ sim_graphics = do_mpc.graphics.Graphics(simulator.data)
 # We just want to create the plot and not show it right now. This "inline magic" supresses the output.
 fig, ax = plt.subplots(2, sharex=True, figsize=(16,9))
 fig.align_ylabels()
-
 for g in [sim_graphics, mpc_graphics]:
     # Plot the angle positions (phi_1, phi_2, phi_2) on the first axis:
     g.add_line(var_type='_x', var_name='l', axis=ax[0])
@@ -135,6 +143,7 @@ for g in [sim_graphics, mpc_graphics]:
     g.add_line(var_type='_u', var_name='Fl', axis=ax[1])
     g.add_line(var_type='_u', var_name='Ft', axis=ax[1])
 
+    # plot x and y location
 
 ax[0].set_ylabel('')
 ax[1].set_ylabel('Motor Torques [Nm]')
@@ -154,3 +163,15 @@ fig
 plt.show()
 #TODO: Add in animations
 #TODO: Add in plots of trajectory with model dispersion
+
+#%%
+results = mpc.data
+l_sol = results['_x', 'l']
+theta_sol = results['_x', 'theta']
+x_end_sol = (l_sol + radius)*np.cos(theta_sol)
+y_end_sol = (l_sol+radius)*np.sin(theta_sol) - free_flyer_width
+fig2, ax2 = plt.subplots(1, sharex=True, figsize=(16,9))
+plt.plot(x_end_sol, y_end_sol)
+ax2.axis('equal')
+ax2.set(xlim = (-4,4), ylim = (-0.5,6))
+plt.show()

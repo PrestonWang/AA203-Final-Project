@@ -19,7 +19,7 @@ class boom:
     Sigma = np.eye(num_params)
     # RLS parameters
     max_iter = 1000 # max number of iterations
-    eps = 1e-4 # termination threshold
+    eps = 1e-6 # termination threshold
 
     def __init__(self, m, a, b, J):
         # m is the actual mass of the object at the end
@@ -39,7 +39,7 @@ class boom:
         l = q[0]
         ax = qdot[2]
         ay = qdot[3] * l
-        accel = np.array([ax, ay]) + np.random.normal(0, self.sigma, (2,))  # adding measurement noise
+        accel = np.array([ax, ay]) + 0.01*np.random.normal(0, self.sigma, (2,))  # adding measurement noise
         force = np.array([self.m * ax, self.m * ay * (l + self.a) / l,
                           self.m * self.b * ax + self.m * ay * (l + self.a)]) + np.random.normal(0, self.sigma, (3,))  # adding measurement noise
         return accel, force
